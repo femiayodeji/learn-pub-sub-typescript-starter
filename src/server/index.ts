@@ -1,5 +1,22 @@
+import amqp from "amqplib";
+
 async function main() {
   console.log("Starting Peril server...");
+  const rabbitConnString = "amqp://guest:guest@localhost:5672/";
+  const conn = await amqp.connect(rabbitConnString);
+  console.log("Connected was successful");
+
+  process.stdin.resume();
+  process.on('SIGINT', () => {
+    console.log("Closing connection...");
+    conn.close().then(() => {
+      console.log("Connection closed");
+      process.exit(0);
+    }).catch((err) => {
+      console.error("Error closing connection:", err);
+      process.exit(1);
+    });
+  });
 }
 
 main().catch((err) => {
