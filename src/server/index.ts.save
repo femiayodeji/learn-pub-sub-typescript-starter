@@ -1,0 +1,11 @@
+import amqp from "amqplib";
+
+async function main() {
+  console.log("Starting Peril server...");
+}
+
+async main().catch((err) => {
+  
+console.error("Fatal error:", err);
+  process.exit(1);
+});
