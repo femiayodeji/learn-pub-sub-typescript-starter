@@ -1,10 +1,25 @@
 import amqp from "amqplib";
+import { publishJSON } from "../internal/pubsub/publish.js";
+import {
+  ExchangePerilDirect,
+  PauseKey,
+} from "../internal/routing/routing.js";
 
 async function main() {
   console.log("Starting Peril server...");
   const rabbitConnString = "amqp://guest:guest@localhost:5672/";
   const conn = await amqp.connect(rabbitConnString);
   console.log("Connected was successful");
+
+  const channel = await conn.createConfirmChannel();
+
+  publishJSON(channel, ExchangePerilDirect, PauseKey, { isPaused: true })
+    .then(() => {
+      console.log("Message published successfully");
+    })
+    .catch((err) => {
+      console.error("Error publishing message:", err);
+    });
 
   process.stdin.resume();
   process.on('SIGINT', () => {
