@@ -4,6 +4,7 @@ import {
   ExchangePerilDirect,
   PauseKey,
 } from "../internal/routing/routing.js";
+import { getInput, printServerHelp } from "../internal/gamelogic/gamelogic.js";
 
 async function main() {
   console.log("Starting Peril server...");
@@ -20,6 +21,39 @@ async function main() {
     .catch((err) => {
       console.error("Error publishing message:", err);
     });
+
+  printServerHelp()
+
+  while (true) {
+    const words: string[] = await getInput()
+    if (words.length === 0) continue;
+
+    if (words[0] === "pause") {
+      console.log("Pausing the game...");
+      publishJSON(channel, ExchangePerilDirect, PauseKey, { isPaused: true })
+        .then(() => {
+          console.log("Game paused successfully");
+        })
+        .catch((err) => {
+          console.error("Error pausing the game:", err);
+        });
+    } else if (words[0] === "resume") {
+      console.log("Resuming the game...");
+      publishJSON(channel, ExchangePerilDirect, PauseKey, { isPaused: false })
+        .then(() => {
+          console.log("Game resumed successfully");
+        })
+        .catch((err) => {
+          console.error("Error resuming the game:", err);
+        });
+    } else if (words[0] === "quit") {
+      console.log("Quitting the server...");
+      break;
+    } else {
+      console.log(`Unknown command: ${words[0]}`);
+      printServerHelp()
+    }
+  }
 
   process.stdin.resume();
   process.on('SIGINT', () => {
