@@ -8,6 +8,15 @@ import { AckType } from "../internal/pubsub/consume.js";
 import { publishJSON } from "../internal/pubsub/publish.js";
 import { ExchangePerilTopic, WarRecognitionsPrefix } from "../internal/routing/routing.js";
 
+async function ackOnPublishOrRequeue(publish: () => Promise<void>): Promise<AckType> {
+    try {
+        await publish();
+        return AckType.Ack;
+    } catch {
+        return AckType.NackRequeue;
+    }
+}
+
 export function handlerPause(gs: GameState): (ps: PlayingState) => AckType {
     return (ps: PlayingState) => {
         handlePause(gs, ps);
@@ -25,12 +34,9 @@ export function handlerMove(gs: GameState, ch: ConfirmChannel): (move: ArmyMove)
                 attacker: move.player,
                 defender: gs.getPlayerSnap(),
             };
-            try {
-                await publishJSON(ch, ExchangePerilTopic, `${WarRecognitionsPrefix}.${gs.getPlayerSnap().username}`, rw);
-                return AckType.Ack;
-            } catch {
-                return AckType.NackRequeue;
-            }
+            return ackOnPublishOrRequeue(() =>
+                publishJSON(ch, ExchangePerilTopic, `${WarRecognitionsPrefix}.${gs.getPlayerSnap().username}`, rw),
+            );
         }
         if (outcome === MoveOutcome.SamePlayer) {
             return AckType.NackDiscard;
@@ -39,21 +45,31 @@ export function handlerMove(gs: GameState, ch: ConfirmChannel): (move: ArmyMove)
     };
 }
 
-export function handlerWar(gs: GameState): (rw: RecognitionOfWar) => Promise<AckType> {
+export function handlerWar(
+    gs: GameState,
+    publishGameLog: (username: string, message: string) => Promise<void>,
+): (rw: RecognitionOfWar) => Promise<AckType> {
     return async (rw: RecognitionOfWar) => {
         const resolution = handleWar(gs, rw);
         process.stdout.write("> ");
+        const username = rw.attacker.username;
         switch (resolution.result) {
             case WarOutcome.NotInvolved:
                 return AckType.NackRequeue;
             case WarOutcome.NoUnits:
                 return AckType.NackDiscard;
             case WarOutcome.OpponentWon:
-                return AckType.Ack;
+                return ackOnPublishOrRequeue(() =>
+                    publishGameLog(username, `${resolution.winner} won a war against ${resolution.loser}`),
+                );
             case WarOutcome.YouWon:
-                return AckType.Ack;
+                return ackOnPublishOrRequeue(() =>
+                    publishGameLog(username, `${resolution.winner} won a war against ${resolution.loser}`),
+                );
             case WarOutcome.Draw:
-                return AckType.Ack;
+                return ackOnPublishOrRequeue(() =>
+                    publishGameLog(username, `A war between ${resolution.attacker} and ${resolution.defender} resulted in a draw`),
+                );
             default:
                 console.error("Unknown war outcome");
                 return AckType.NackDiscard;

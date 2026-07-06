@@ -15,6 +15,10 @@ async function main() {
   const conn = await amqp.connect(rabbitConnString);
   console.log("Connected was successful");
 
+  const setupChannel = await conn.createChannel();
+  await setupChannel.assertExchange(ExchangePerilDirect, "direct");
+  await setupChannel.assertExchange(ExchangePerilTopic, "topic");
+
   await declareAndBind(conn, ExchangePerilTopic, GameLogSlug, `${GameLogSlug}.*`, SimpleQueueType.Durable)
   console.log("Declared and bound queue for game logs.");
 
