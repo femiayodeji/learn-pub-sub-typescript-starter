@@ -1,5 +1,5 @@
 import amqp, { type Channel } from "amqplib";
-import { ExchangePerilDeadLetter, PerilDlqSlug } from "../routing/routing.js";
+import { ExchangePerilDeadLetter } from "../routing/routing.js";
 
 export enum SimpleQueueType {
   Durable,
@@ -14,10 +14,6 @@ export async function declareAndBind(
   queueType: SimpleQueueType,
 ): Promise<[Channel, amqp.Replies.AssertQueue]> {
     const channel = await conn.createChannel();
-
-    await channel.assertExchange(ExchangePerilDeadLetter, "fanout");
-    await channel.assertQueue(PerilDlqSlug);
-    await channel.bindQueue(PerilDlqSlug, ExchangePerilDeadLetter, "");
 
     const queueOptions: amqp.Options.AssertQueue = {};
     if (queueType === SimpleQueueType.Durable) 
@@ -38,7 +34,7 @@ export async function subscribeJSON<T>(
   queueName: string,
   key: string,
   queueType: SimpleQueueType,
-  handler: (data: T) => void,
+  handler: (data: T) => boolean,
 ): Promise<void> {
   const [channel, queue] = await declareAndBind(
     conn,
@@ -54,8 +50,12 @@ export async function subscribeJSON<T>(
     }
 
     const data = JSON.parse(message.content.toString()) as T;
-    handler(data);
-    channel.ack(message);
+    const shouldAck = handler(data);
+    if (shouldAck) {
+      channel.ack(message);
+    } else {
+      channel.nack(message, false, false);
+    }
   });
 }
 

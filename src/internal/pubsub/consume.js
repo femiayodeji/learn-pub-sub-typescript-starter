@@ -1,4 +1,4 @@
-import { ExchangePerilDeadLetter, PerilDlqSlug } from "../routing/routing.js";
+import { ExchangePerilDeadLetter } from "../routing/routing.js";
 export var SimpleQueueType;
 (function (SimpleQueueType) {
     SimpleQueueType[SimpleQueueType["Durable"] = 0] = "Durable";
@@ -6,10 +6,6 @@ export var SimpleQueueType;
 })(SimpleQueueType = SimpleQueueType || (SimpleQueueType = {}));
 export async function declareAndBind(conn, exchange, queueName, key, queueType) {
     const channel = await conn.createChannel();
-
-    await channel.assertExchange(ExchangePerilDeadLetter, "fanout");
-    await channel.assertQueue(PerilDlqSlug);
-    await channel.bindQueue(PerilDlqSlug, ExchangePerilDeadLetter, "");
 
     const queueOptions = {};
     if (queueType === SimpleQueueType.Durable)
@@ -29,7 +25,11 @@ export async function subscribeJSON(conn, exchange, queueName, key, queueType, h
             return;
         }
         const data = JSON.parse(message.content.toString());
-        handler(data);
-        channel.ack(message);
+        const shouldAck = handler(data);
+        if (shouldAck) {
+            channel.ack(message);
+        } else {
+            channel.nack(message, false, false);
+        }
     });
 }
