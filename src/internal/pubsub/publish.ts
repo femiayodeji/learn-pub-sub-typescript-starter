@@ -17,3 +17,21 @@ export function publishJSON<T>(
         });
     });
 };
+
+export function publishMsgPack<T>(
+  ch: ConfirmChannel,
+  exchange: string,
+  routingKey: string,
+  value: T,
+): Promise<void> {
+    const serializedValue = Buffer.from(JSON.stringify(value));
+    return new Promise((resolve, reject) => {
+        ch.publish(exchange, routingKey, serializedValue, { contentType: "application/x-msgpack" }, (err) => {
+            if (err) {
+                reject(err);
+            } else {
+                resolve();
+            }
+        });
+    });
+}
