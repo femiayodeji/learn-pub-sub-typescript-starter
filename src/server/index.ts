@@ -2,15 +2,21 @@ import amqp from "amqplib";
 import { publishJSON } from "../internal/pubsub/publish.js";
 import {
   ExchangePerilDirect,
+  ExchangePerilTopic,
+  GameLogSlug,
   PauseKey,
 } from "../internal/routing/routing.js";
 import { getInput, printServerHelp } from "../internal/gamelogic/gamelogic.js";
+import { declareAndBind, SimpleQueueType } from "../internal/pubsub/consume.js";
 
 async function main() {
   console.log("Starting Peril server...");
   const rabbitConnString = "amqp://guest:guest@localhost:5672/";
   const conn = await amqp.connect(rabbitConnString);
   console.log("Connected was successful");
+
+  await declareAndBind(conn, ExchangePerilTopic, GameLogSlug, `${GameLogSlug}.*`, SimpleQueueType.Durable)
+  console.log("Declared and bound queue for game logs.");
 
   const channel = await conn.createConfirmChannel();
 

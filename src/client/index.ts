@@ -1,10 +1,12 @@
 import amqp from "amqplib";
 import { clientWelcome, commandStatus, getInput, printClientHelp, printQuit } from "../internal/gamelogic/gamelogic.js";
-import { declareAndBind, SimpleQueueType } from "../internal/pubsub/consume.js";
-import { ExchangePerilDirect, PauseKey } from "../internal/routing/routing.js";
+import { SimpleQueueType, subscribeJSON } from "../internal/pubsub/consume.js";
+import { publishJSON } from "../internal/pubsub/publish.js";
+import { ArmyMovesPrefix, ExchangePerilDirect, ExchangePerilTopic, PauseKey } from "../internal/routing/routing.js";
 import { GameState } from "../internal/gamelogic/gamestate.js";
 import { commandSpawn } from "../internal/gamelogic/spawn.js";
 import { commandMove } from "../internal/gamelogic/move.js";
+import { handlerMove, handlerPause } from "./handlers.js";
 
 async function main() {
   console.log("Starting Peril client...");
@@ -14,9 +16,29 @@ async function main() {
   
   clientWelcome().then(async (username) => {
     console.log(`Client ${username} is ready to send messages.`);
-    declareAndBind(conn, ExchangePerilDirect, `pause.${username}`, PauseKey, SimpleQueueType.Transient);
 
     const newGameState = new GameState(username);
+    const moveRoutingKey = `${ArmyMovesPrefix}.${username}`;
+
+    await subscribeJSON(
+      conn,
+      ExchangePerilDirect,
+      `pause.${username}`,
+      PauseKey,
+      SimpleQueueType.Transient,
+      handlerPause(newGameState),
+    );
+
+    await subscribeJSON(
+      conn,
+      ExchangePerilTopic,
+      moveRoutingKey,
+      `${ArmyMovesPrefix}.*`,
+      SimpleQueueType.Transient,
+      handlerMove(newGameState),
+    );
+
+    const moveChannel = await conn.createConfirmChannel();
 
     while (true) {
       const words = await getInput();
@@ -26,8 +48,9 @@ async function main() {
         if (words[0] === "spawn") {
           commandSpawn(newGameState, words);
         } else if (words[0] === "move") {
-          commandMove(newGameState, words);
-          console.log("Move command completed successfully.");
+          const move = commandMove(newGameState, words);
+          await publishJSON(moveChannel, ExchangePerilTopic, moveRoutingKey, move);
+          console.log("Move published successfully.");
         } else if (words[0] === "status") { 
           commandStatus(newGameState);
         } else if (words[0] === "help") {
