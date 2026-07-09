@@ -1,5 +1,6 @@
 import amqp, { type Channel } from "amqplib";
 import { ExchangePerilDeadLetter } from "../routing/routing.js";
+import { decode } from "@msgpack/msgpack";
 
 export enum SimpleQueueType {
   Durable,
@@ -34,28 +35,30 @@ export async function declareAndBind(
     
 }
 
-export async function subscribeJSON<T>(
+export async function subscribe<T>(
   conn: amqp.ChannelModel,
   exchange: string,
   queueName: string,
-  key: string,
-  queueType: SimpleQueueType,
+  routingKey: string,
+  simpleQueueType: SimpleQueueType,
   handler: (data: T) => Promise<AckType> | AckType,
+  deserializer: (data: Buffer) => T,
 ): Promise<void> {
   const [channel, queue] = await declareAndBind(
     conn,
     exchange,
     queueName,
-    key,
-    queueType,
+    routingKey,
+    simpleQueueType,
   );
+  await channel.prefetch(1);
 
   await channel.consume(queue.queue, async (message: amqp.ConsumeMessage | null) => {
     if (message === null) {
       return;
     }
 
-    const data = JSON.parse(message.content.toString()) as T;
+    const data = deserializer(message.content);
     const ackType = await handler(data);
     switch (ackType) {
       case AckType.Ack:
@@ -69,5 +72,43 @@ export async function subscribeJSON<T>(
         break;
     }
   });
+}
+
+export async function subscribeJSON<T>(
+  conn: amqp.ChannelModel,
+  exchange: string,
+  queueName: string,
+  key: string,
+  queueType: SimpleQueueType,
+  handler: (data: T) => Promise<AckType> | AckType,
+): Promise<void> {
+  return subscribe(
+    conn,
+    exchange,
+    queueName,
+    key,
+    queueType,
+    handler,
+    (data: Buffer) => JSON.parse(data.toString()) as T,
+  );
+}
+
+export async function subscribeMsgPack<T>(
+  conn: amqp.ChannelModel,
+  exchange: string,
+  queueName: string,
+  routingKey: string,
+  simpleQueueType: SimpleQueueType,
+  handler: (data: T) => Promise<AckType> | AckType,
+): Promise<void> {
+  return subscribe(
+    conn,
+    exchange,
+    queueName,
+    routingKey,
+    simpleQueueType,
+    handler,
+    (data: Buffer) => decode(data) as T,
+  );
 }
 
